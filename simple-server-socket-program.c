@@ -19,6 +19,18 @@ void error(char *msg)
     perror(msg);
     exit(1);
 }
+int timeout = 5;
+
+void *kill_zombies()
+{
+    int w;
+    while(1){
+        while (( w = waitpid(-1, NULL, WNOHANG) ) > 0){
+                printf("Killed zombie %d\n", w);
+        }
+        sleep(timeout);
+    }
+}
 
 int main(int argc, char *argv[])
 {
@@ -64,10 +76,17 @@ int main(int argc, char *argv[])
      listen(sockfd,5);
      clilen = sizeof(cli_addr);
 
+    pthread_t my_thread;
+    if(pthread_create( &my_thread , NULL ,  kill_zombies , NULL) < 0)
+    {
+        perror("could not create thread");
+        return 1;
+    }
+
      int pid,status,w;
      /* accept a new request, create a newsockfd */
      while(1){
-        
+
         newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
 
         if (newsockfd < 0) 
@@ -81,9 +100,8 @@ int main(int argc, char *argv[])
         else if(pid > 0)
         {
             close(newsockfd);
-            while (( w= waitpid(-1, &status, WNOHANG) ) > 0)
-            {
-                printf("Killed zombie %d\n", w);
+            while (( w = waitpid(-1, NULL, WNOHANG) ) > 0){
+                    printf("Killed zombie %d\n", w);
             }
             continue;
         }
