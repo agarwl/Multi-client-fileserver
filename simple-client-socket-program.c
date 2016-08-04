@@ -5,11 +5,14 @@
 #include <netdb.h> 
 
 #define min(a, b) ((a < b) ? a : b)
+#define num_client 5
 
-
+void *connection(void *);
 int readdata(int sock, void *buf, int buflen);
 int readlong(int sock, long *value);
 int readfile(int sock, FILE *f);
+struct hostent *server;
+int portno;
 
 void error(char *msg)
 {
@@ -19,10 +22,9 @@ void error(char *msg)
 
 int main(int argc, char *argv[])
 {
-    int sockfd, portno, n;
+    int sockfd, n;
 
     struct sockaddr_in serv_addr;
-    struct hostent *server;
 
     char buffer[256];
     if (argc < 3) {
@@ -32,62 +34,81 @@ int main(int argc, char *argv[])
 
     /* create socket, get sockfd handle */
 
+    // portno = atoi(argv[2]);
+    // sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    // if (sockfd < 0) 
+    //     error("ERROR opening socket");
     portno = atoi(argv[2]);
+    server = gethostbyname(argv[1]);
+
+    pthread_t my_thread;
+    int i;
+    for (i=1; i<=num_client; i++) 
+    {
+        if( pthread_create( &my_thread , NULL ,  connection , (void*) i) < 0)
+        {
+            perror("could not create thread");
+            return 1;
+        }
+    }
+    pthread_exit(NULL);
+
+}
+
+void *connection(void *threadid)
+{
+    int threadnum = (int)threadid;
+    int sockfd;
+    struct sockaddr_in serv_addr;
+    int n;
+    // char buffer[256],buffer[256];
+    char buffer[256];
+
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) 
         error("ERROR opening socket");
 
-    /* fill in server address in sockaddr_in datastructure */
-
-    server = gethostbyname(argv[1]);
+    // struct hostent *server = gethostbyname(hostinfo);
     if (server == NULL) {
         fprintf(stderr,"ERROR, no such host\n");
         exit(0);
     }
-    bzero((char *) &serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    bcopy((char *)server->h_addr, 
-         (char *)&serv_addr.sin_addr.s_addr,
-         server->h_length);
-    serv_addr.sin_port = htons(portno);
 
-    /* connect to server */
+    bzero((char *) &serv_addr, sizeof (serv_addr));
+
+    serv_addr.sin_family = AF_INET;
+    bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
+    // serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    serv_addr.sin_port = htons(portno);
 
     if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0) 
         error("ERROR connecting");
 
-    /* ask user for input */
+    printf("Connected successfully client:%d\n", threadnum);
 
-    // printf("Please enter the message: ");
-    // bzero(buffer,256);
-    // fgets(buffer,255,stdin);
-
-    /* send user message to server */
-
-    // n = write(sockfd,buffer,strlen(buffer));
-    // if (n < 0) 
-    //      error("ERROR writing to socket");
-    // bzero(buffer,256);
-  
-    FILE *filehandle = fopen("test2.txt", "wb");
+    printf("Running thread : %d\n", threadnum);
+    char filename [20];
+    char temp[5];
+    strcpy(filename, "test");
+    sprintf(temp,"%d",threadnum);
+    strcat(filename,temp);
+    strcat(filename,".txt");
+    FILE *filehandle = fopen(filename, "wb");
     if (filehandle != NULL)
     {
         int ok = readfile(sockfd, filehandle);
         fclose(filehandle);
-
         if (ok == 1)
-            n = write(sockfd,"I got your message",18);
+            printf("File received: %s\n", filename);
         
         else
-            remove("test1.txt");
+        {
+            remove(filename);
+            error("File send fail");
+        }
     }
-    /* read reply from server */
 
-    // n = read(sockfd,buffer,255);
-    // if (n < 0) 
-    //      error("ERROR reading from socket");
-    // printf("%s\n",buffer);
-
+    close(sockfd);
     return 0;
 }
 
@@ -128,6 +149,7 @@ int readlong(int sock, long *value)
 int readfile(int sock, FILE *f)
 {
     long filesize;
+    
     if (!readlong(sock, &filesize))
         return 0;
     if (filesize > 0)
