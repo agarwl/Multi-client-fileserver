@@ -6,9 +6,10 @@
 
 #define min(a, b) ((a < b) ? a : b)
 
-int senddata(int sock, void *buf, int buflen);
-int sendlong(int sock, long value);
-int sendfile(int sock, FILE *f);
+
+int readdata(int sock, void *buf, int buflen);
+int readlong(int sock, long *value);
+int readfile(int sock, FILE *f);
 
 void error(char *msg)
 {
@@ -67,40 +68,47 @@ int main(int argc, char *argv[])
     // if (n < 0) 
     //      error("ERROR writing to socket");
     // bzero(buffer,256);
-    FILE *filehandle = fopen("test.txt", "rb");
+  
+    FILE *filehandle = fopen("test2.txt", "wb");
     if (filehandle != NULL)
     {
-        sendfile(sockfd, filehandle);
+        int ok = readfile(sockfd, filehandle);
         fclose(filehandle);
+
+        if (ok == 1)
+            n = write(sockfd,"I got your message",18);
+        
+        else
+            remove("test1.txt");
     }
-    
     /* read reply from server */
 
-    n = read(sockfd,buffer,255);
-    if (n < 0) 
-         error("ERROR reading from socket");
-    printf("%s\n",buffer);
+    // n = read(sockfd,buffer,255);
+    // if (n < 0) 
+    //      error("ERROR reading from socket");
+    // printf("%s\n",buffer);
 
     return 0;
 }
 
-
-int senddata(int sock, void *buf, int buflen)
+int readdata(int sock, void *buf, int buflen)
 {
     unsigned char *pbuf = (unsigned char *) buf;
 
     while (buflen > 0)
     {
-        int num = send(sock, pbuf, buflen, 0);
+        int num = recv(sock, pbuf, buflen, 0);
         // if (num == SOCKET_ERROR)
         // {
         //     if (WSAGetLastError() == WSAEWOULDBLOCK)
         //     {
-        //         // optional: use select() to check for timeout to fail the send
+        //         // optional: use select() to check for timeout to fail the read
         //         continue;
         //     }
         //     return 0;
         // }
+        if (num <= 0)
+            return 0;
 
         pbuf += num;
         buflen -= num;
@@ -109,35 +117,39 @@ int senddata(int sock, void *buf, int buflen)
     return 1;
 }
 
-int sendlong(int sock, long value)
+int readlong(int sock, long *value)
 {
-    value = htonl(value);
-    return senddata(sock, &value, sizeof(value));
+    if (!readdata(sock, value, sizeof(value)))
+        return 0;
+    *value = ntohl(*value);
+    return 1;
 }
 
-int sendfile(int sock, FILE *f)
+int readfile(int sock, FILE *f)
 {
-    fseek(f, 0, SEEK_END);
-    long filesize = ftell(f);
-    rewind(f);
-    if (filesize == EOF)
-        return 0;
-    if (sendlong(sock, filesize) == 0)
+    long filesize;
+    if (!readlong(sock, &filesize))
         return 0;
     if (filesize > 0)
     {
         char buffer[1024];
         do
         {
-            size_t num = min(filesize, sizeof(buffer));
-            num = fread(buffer, 1, num, f);
-            if (num < 1)
+            int num = min(filesize, sizeof(buffer));
+            if (readdata(sock, buffer, num) == 0)
                 return 0;
-            if (senddata(sock, buffer, num) == 0)
-                return 0;
+            int offset = 0;
+            do
+            {
+                size_t written = fwrite(&buffer[offset], 1, num-offset, f);
+                if (written < 1)
+                    return 0;
+                offset += written;
+            }
+            while (offset < num);
             filesize -= num;
         }
         while (filesize > 0);
     }
     return 1;
-}    
+}

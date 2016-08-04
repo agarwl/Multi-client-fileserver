@@ -7,10 +7,9 @@
 
 #define min(a, b) ((a < b) ? a : b)
 
-int readdata(int sock, void *buf, int buflen);
-int readlong(int sock, long *value);
-int readfile(int sock, FILE *f);
-
+int senddata(int sock, void *buf, int buflen);
+int sendlong(int sock, long value);
+int sendfile(int sock, FILE *f);
 void error(char *msg)
 {
     perror(msg);
@@ -62,7 +61,7 @@ int main(int argc, char *argv[])
      clilen = sizeof(cli_addr);
 
      /* accept a new request, create a newsockfd */
-
+     while(1){
      newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
      if (newsockfd < 0) 
           error("ERROR on accept");
@@ -73,18 +72,14 @@ int main(int argc, char *argv[])
      // n = read(newsockfd,buffer,255);
      // if (n < 0) error("ERROR reading from socket");
      // printf("Here is the message: %s\n",buffer);
-    FILE *filehandle = fopen("test1.txt", "wb");
-    if (filehandle != NULL)
-    {
-        int ok = readfile(newsockfd, filehandle);
-        fclose(filehandle);
-
-        if (ok == 1)
-            n = write(newsockfd,"I got your message",18);
-        
-        else
-            remove("test1.txt");
+      FILE *filehandle = fopen("test.txt", "rb");
+      if (filehandle != NULL)
+      {
+          sendfile(newsockfd, filehandle);
+          fclose(filehandle);
+      }
     }
+    
      /* send reply to client */
 
      // n = write(newsockfd,"I got your message",18);
@@ -92,24 +87,24 @@ int main(int argc, char *argv[])
      return 0; 
 }
 
-int readdata(int sock, void *buf, int buflen)
+
+
+int senddata(int sock, void *buf, int buflen)
 {
     unsigned char *pbuf = (unsigned char *) buf;
 
     while (buflen > 0)
     {
-        int num = recv(sock, pbuf, buflen, 0);
+        int num = send(sock, pbuf, buflen, 0);
         // if (num == SOCKET_ERROR)
         // {
         //     if (WSAGetLastError() == WSAEWOULDBLOCK)
         //     {
-        //         // optional: use select() to check for timeout to fail the read
+        //         // optional: use select() to check for timeout to fail the send
         //         continue;
         //     }
         //     return 0;
         // }
-        if (num <= 0)
-            return 0;
 
         pbuf += num;
         buflen -= num;
@@ -118,39 +113,35 @@ int readdata(int sock, void *buf, int buflen)
     return 1;
 }
 
-int readlong(int sock, long *value)
+int sendlong(int sock, long value)
 {
-    if (!readdata(sock, value, sizeof(value)))
-        return 0;
-    *value = ntohl(*value);
-    return 1;
+    value = htonl(value);
+    return senddata(sock, &value, sizeof(value));
 }
 
-int readfile(int sock, FILE *f)
+int sendfile(int sock, FILE *f)
 {
-    long filesize;
-    if (!readlong(sock, &filesize))
+    fseek(f, 0, SEEK_END);
+    long filesize = ftell(f);
+    rewind(f);
+    if (filesize == EOF)
+        return 0;
+    if (sendlong(sock, filesize) == 0)
         return 0;
     if (filesize > 0)
     {
         char buffer[1024];
         do
         {
-            int num = min(filesize, sizeof(buffer));
-            if (readdata(sock, buffer, num) == 0)
+            size_t num = min(filesize, sizeof(buffer));
+            num = fread(buffer, 1, num, f);
+            if (num < 1)
                 return 0;
-            int offset = 0;
-            do
-            {
-                size_t written = fwrite(&buffer[offset], 1, num-offset, f);
-                if (written < 1)
-                    return 0;
-                offset += written;
-            }
-            while (offset < num);
+            if (senddata(sock, buffer, num) == 0)
+                return 0;
             filesize -= num;
         }
         while (filesize > 0);
     }
     return 1;
-}
+}    
