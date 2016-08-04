@@ -3,16 +3,16 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h> 
+#include <time.h>
 
 #define min(a, b) ((a < b) ? a : b)
-#define num_client 5
 
 void *connection(void *);
 int readdata(int sock, void *buf, int buflen);
 int readlong(int sock, long *value);
 int readfile(int sock, FILE *f);
 struct hostent *server;
-int portno;
+int portno,runtime,sleep;
 
 void error(char *msg)
 {
@@ -27,8 +27,8 @@ int main(int argc, char *argv[])
     struct sockaddr_in serv_addr;
 
     char buffer[256];
-    if (argc < 3) {
-       fprintf(stderr,"usage %s hostname port\n", argv[0]);
+    if (argc < 7) {
+       fprintf(stderr,"usage %s hostname port users time sleep file\n", argv[0]);
        exit(0);
     }
 
@@ -40,6 +40,9 @@ int main(int argc, char *argv[])
     //     error("ERROR opening socket");
     portno = atoi(argv[2]);
     server = gethostbyname(argv[1]);
+    int num_client = atoi(argv[3]);
+    runtime = atoi(argv[4]);
+    sleeptime = atoi(argv[5]);
 
     pthread_t my_thread;
     int i;
@@ -86,28 +89,32 @@ void *connection(void *threadid)
 
     printf("Connected successfully client:%d\n", threadnum);
 
-    printf("Running thread : %d\n", threadnum);
-    char filename [20];
-    char temp[5];
-    strcpy(filename, "test");
-    sprintf(temp,"%d",threadnum);
-    strcat(filename,temp);
-    strcat(filename,".txt");
-    FILE *filehandle = fopen(filename, "wb");
-    if (filehandle != NULL)
+    clock_t t;
+    t = clock();
+    while ((clock() - t)/LOCKS_PER_SEC < runtime)
     {
-        int ok = readfile(sockfd, filehandle);
-        fclose(filehandle);
-        if (ok == 1)
-            printf("File received: %s\n", filename);
-        
-        else
+        char filename [20];
+        char temp[5];
+        strcpy(filename, "test");
+        sprintf(temp,"%d",threadnum);
+        strcat(filename,temp);
+        strcat(filename,".txt");
+        FILE *filehandle = fopen(filename, "wb");
+        if (filehandle != NULL)
         {
-            remove(filename);
-            error("File send fail");
+            int ok = readfile(sockfd, filehandle);
+            fclose(filehandle);
+            if (ok == 1)
+                printf("File received: %s\n", filename);
+            
+            else
+            {
+                remove(filename);
+                error("File send fail");
+            }
         }
+        sleep(sleeptime);
     }
-
     close(sockfd);
     return 0;
 }
