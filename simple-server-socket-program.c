@@ -4,6 +4,10 @@
 #include <sys/types.h> 
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <sys/wait.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
 
 #define min(a, b) ((a < b) ? a : b)
 
@@ -60,26 +64,43 @@ int main(int argc, char *argv[])
      listen(sockfd,5);
      clilen = sizeof(cli_addr);
 
+     int pid,status,w;
      /* accept a new request, create a newsockfd */
      while(1){
-     newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
-     if (newsockfd < 0) 
-          error("ERROR on accept");
+        
+        newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
 
-     /* read message from client */
+        if (newsockfd < 0) 
+            error("ERROR on accept");
 
-     // bzero(buffer,256);
-     // n = read(newsockfd,buffer,255);
-     // if (n < 0) error("ERROR reading from socket");
-     // printf("Here is the message: %s\n",buffer);
-      FILE *filehandle = fopen("test.txt", "rb");
-      if (filehandle != NULL)
-      {
-          sendfile(newsockfd, filehandle);
-          fclose(filehandle);
-      }
+        if((pid = fork()) == -1)
+        {
+            close(newsockfd);
+            continue;
+        }
+        else if(pid > 0)
+        {
+            close(newsockfd);
+            while (( w= waitpid(-1, &status, WNOHANG) ) > 0)
+            {
+                printf("Killed zombie %d\n", w);
+            }
+            continue;
+        }
+        else if(pid == 0)
+        {
+            FILE *filehandle = fopen("test.txt", "rb");
+            if (filehandle != NULL)
+            {
+              sendfile(newsockfd, filehandle);
+              fclose(filehandle);
+            }
+            close(newsockfd);
+            return 0;
+        }
     }
-    
+
+
      /* send reply to client */
 
      // n = write(newsockfd,"I got your message",18);
