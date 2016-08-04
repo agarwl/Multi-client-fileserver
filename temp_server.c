@@ -15,25 +15,25 @@ void error(char *msg)
     exit(1);
 }
 
-void handle_sigchld(int sig) {
-    pid_t pid;
-    int status;
-    while (( pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        /* NOT REENTRANT! Avoid in practice! */
-        // printf("Reaped child %d\n", pid);
-    }
-    /* No more zombie children to reap. */
-}
+// void handle_sigchld(int sig) {
+//     pid_t pid;
+//     int status;
+//     while (( pid = waitpid(-1, &status, WNOHANG)) > 0) {
+//          NOT REENTRANT! Avoid in practice! 
+//         // printf("Reaped child %d\n", pid);
+//     }
+//     /* No more zombie children to reap. */
+// }
 
 int main(int argc, char *argv[])
 {
-    // Signal handling code
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = handle_sigchld;
-    sigaction(SIGCHLD, &sa, NULL);
+    // // Signal handling code
+    // struct sigaction sa;
+    // memset(&sa, 0, sizeof(sa));
+    // sa.sa_handler = handle_sigchld;
+    // sigaction(SIGCHLD, &sa, NULL);
 
-sigaction(SIGCHLD, &sa, NULL);
+// sigaction(SIGCHLD, &sa, NULL);
      int sockfd, newsockfd, portno, clilen;
      char buffer[256];
      struct sockaddr_in serv_addr, cli_addr;
@@ -93,6 +93,11 @@ sigaction(SIGCHLD, &sa, NULL);
         else if(pid > 0)
         {
             close(newsockfd);
+            printf("here1\n");
+            while (( w= waitpid(-1, &status, WNOHANG) ) > 0)
+            {
+                printf("yeah\n");
+            }
             counter++;
             printf("here2\n");
             continue;
