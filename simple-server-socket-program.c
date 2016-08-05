@@ -10,6 +10,7 @@
 #include <string.h>
 
 #define min(a, b) ((a < b) ? a : b)
+#define BUF_SIZE 30
 
 int senddata(int sock, void *buf, int buflen);
 int sendlong(int sock, long value);
@@ -107,11 +108,23 @@ int main(int argc, char *argv[])
         }
         else if(pid == 0)
         {
-            FILE *filehandle = fopen("test.txt", "rb");
-            if (filehandle != NULL)
-            {
-              sendfile(newsockfd, filehandle);
-              fclose(filehandle);
+            char buffer[BUF_SIZE];
+            char* filename = NULL;
+            bzero(buffer,BUF_SIZE);
+
+            n = read(newsockfd,buffer,BUF_SIZE);
+            if(strncmp(buffer,"get",3) == 0){        // the command passed was of form "get filename"
+                filename = buffer + 4;              // point filename to the correct pointer
+                printf("File requested: %s\n",filename);
+            }
+
+            if(filename != NULL){
+
+                FILE *filehandle = fopen(filename, "rb");
+                if (filehandle != NULL){
+                  sendfile(newsockfd, filehandle);
+                  fclose(filehandle);
+                }
             }
             close(newsockfd);
             return 0;
@@ -135,16 +148,6 @@ int senddata(int sock, void *buf, int buflen)
     while (buflen > 0)
     {
         int num = send(sock, pbuf, buflen, 0);
-        // if (num == SOCKET_ERROR)
-        // {
-        //     if (WSAGetLastError() == WSAEWOULDBLOCK)
-        //     {
-        //         // optional: use select() to check for timeout to fail the send
-        //         continue;
-        //     }
-        //     return 0;
-        // }
-
         pbuf += num;
         buflen -= num;
     }
