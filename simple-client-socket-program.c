@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
        pthread_join(tid[i], NULL);
 
    double total_req=0,throughput,avg_response_time=0;
-   for (int i = 0; i < num_client; ++i)
+   for ( i = 0; i < num_client; ++i)
    {
         total_req += num_requests[i];
         avg_response_time += response_time[i];
@@ -93,6 +93,7 @@ void *connection(void *threadid)
 
     num_requests[threadnum] = 0;
     response_time[threadnum] = 0;
+    srand(threadnum);
 
     if (server == NULL) {
         fprintf(stderr,"ERROR, no such host\n");
