@@ -11,13 +11,13 @@
 #define BUF_SIZE 30
 
 void *connection(void *);
-int readdata(int sock, void *buf, int buflen);
-int readlong(int sock, long *value);
-int readfile_and_discard(int sock, FILE *f);
+int read_and_discard(int sock);//, FILE *f);
 struct hostent *server;
 int portno,runtime,sleeptime;
 char *mode;
 
+int *num_requests;
+double *response_time;
 
 void error(char *msg)
 {
@@ -44,6 +44,9 @@ int main(int argc, char *argv[])
     sleeptime = atoi(argv[5]);
     mode = argv[6];
 
+    num_requests = malloc(num_client * sizeof(int));
+    response_time =  malloc(num_client * sizeof(double));
+
     pthread_t tid[num_client];
     int i;
     for (i=0; i<num_client; i++) 
@@ -55,6 +58,22 @@ int main(int argc, char *argv[])
     }
     for (i = 0; i < num_client; i++)
        pthread_join(tid[i], NULL);
+
+   double total_req=0,throughput,avg_response_time=0;
+   for (int i = 0; i < num_client; ++i)
+   {
+        total_req += num_requests[i];
+        avg_response_time += response_time[i];
+       /* code */
+   }
+   throughput = total_req/runtime;
+   avg_response_time /= total_req;
+
+   printf("throughput = %f req/s\n",throughput);
+   printf("average response time = %f sec\n",avg_response_time);
+
+   free(num_requests);
+   free(response_time);
 
    return 0;
 
@@ -71,6 +90,9 @@ void *connection(void *threadid)
     char temp[5];
     int filenum;                    // read the files/foo0.txt file by default if the mode is fixed
 
+
+    num_requests[threadnum] = 0;
+    response_time[threadnum] = 0;
 
     if (server == NULL) {
         fprintf(stderr,"ERROR, no such host\n");
@@ -99,8 +121,6 @@ void *connection(void *threadid)
         if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0) 
             error("ERROR connecting");
 
-        // printf("Connected successfully client:%d\n", threadnum);
-
         if(strcmp(mode,"random") == 0)
             filenum = rand() % NUM_FILES;
         else if(strcmp(mode,"fixed") == 0)
@@ -114,22 +134,19 @@ void *connection(void *threadid)
 
         n = write(sockfd,filename,strlen(filename));
         if (n < 0) error("ERROR writing to socket");
+        now = time(NULL);
 
-        FILE *filehandle = fopen(filename+10, "wb");
-        printf("%s\n",filename );
-        if (filehandle != NULL)
-        {
-            int ok = readfile_and_discard(sockfd, filehandle);
-            fclose(filehandle);
-            if (ok == 1){
-                printf("File received: %s\n", filename+10);
-            }
-            else
-            {
-                remove(filename);
-                error("File send fail");
-            }
+        int ok = read_and_discard(sockfd);
+        if (ok == 1){
+            response_time[threadnum] += (time(NULL) - now);
+            num_requests[threadnum]++;
+            printf("File received: %s\n", filename+10);
         }
+        else
+        {
+            error("File send fail");
+        }
+
         sleep(sleeptime);
         close(sockfd);
     }
@@ -137,57 +154,17 @@ void *connection(void *threadid)
     return 0;
 }
 
-int readdata(int sock, void *buf, int buflen)
+int read_and_discard(int sock) 
 {
-    unsigned char *pbuf = (unsigned char *) buf;
-
-    while (buflen > 0)
-    {
-        int num = recv(sock, pbuf, buflen, 0);
-        if (num <= 0)
-            return 0;
-
-        pbuf += num;
-        buflen -= num;
-    }
-
-    return 1;
-}
-
-int readlong(int sock, long *value)
-{
-    if (!readdata(sock, value, sizeof(value)))
+    char buffer[1024];
+    size_t bufflen = sizeof(buffer);
+    int bytes_read;
+    while(( bytes_read = read(sock, buffer, bufflen) ) > 0);
+    // {
+    //      size_t written = fwrite(buffer, 1, bytes_read, f);
+    // }
+    if(bytes_read == 0)
+        return 1;
+    else
         return 0;
-    *value = ntohl(*value);
-    return 1;
-}
-
-int readfile_and_discard(int sock, FILE *f)
-{
-    long filesize;
-    
-    if (!readlong(sock, &filesize))
-        return 0;
-    if (filesize > 0)
-    {
-        char buffer[1024];
-        do
-        {
-            int num = min(filesize, sizeof(buffer));
-            if (readdata(sock, buffer, num) == 0)
-                return 0;
-            int offset = 0;
-            do
-            {
-                size_t written = fwrite(&buffer[offset], 1, num-offset, f);
-                if (written < 1)
-                    return 0;
-                offset += written;
-            }
-            while (offset < num);
-            filesize -= num;
-        }
-        while (filesize > 0);
-    }
-    return 1;
 }
