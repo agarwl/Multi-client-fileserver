@@ -1,5 +1,3 @@
-/* A simple server in the internet domain using TCP
-   The port number is passed as an argument */
 #include <stdio.h>
 #include <sys/types.h> 
 #include <sys/socket.h>
@@ -12,16 +10,23 @@
 #define min(a, b) ((a < b) ? a : b)
 #define BUF_SIZE 30
 
+// a function to send buflen bytes to client
 int senddata(int sock, void *buf, int buflen);
+// a function to send file size to the client
 int sendlong(int sock, long value);
+// a function to send a file to the the client
 int sendfile(int sock, FILE *f);
+
 void error(char *msg)
 {
     perror(msg);
     exit(1);
 }
+// timeout value to periodically kill dead children
+// after an interval of 5s
 int timeout = 5;
 
+// a function to kill zombies periodically
 void *kill_zombies()
 {
     int w;
@@ -74,9 +79,11 @@ int main(int argc, char *argv[])
      
      /* listen for incoming connection requests */
 
-     listen(sockfd,5);
+     listen(sockfd,100);
      clilen = sizeof(cli_addr);
 
+
+    // create thread for reaping dead child
     pthread_t my_thread;
     if(pthread_create( &my_thread , NULL ,  kill_zombies , NULL) < 0)
     {
@@ -85,27 +92,37 @@ int main(int argc, char *argv[])
     }
 
      int pid,status,w;
-     /* accept a new request, create a newsockfd */
+     
      while(1){
 
+        /* accept a new request, create a newsockfd */
         newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
 
+        // if error on creating new socket, exit
         if (newsockfd < 0) 
             error("ERROR on accept");
 
+        // fork a new children to handle the new connection
         if((pid = fork()) == -1)
         {
+            // close the socket on error and again try to recievr
             close(newsockfd);
             continue;
         }
+        // parent code
         else if(pid > 0)
         {
+            // close the connection in parent
             close(newsockfd);
+
+            // reap dead chil too
             while (( w = waitpid(-1, NULL, WNOHANG) ) > 0){
                     printf("Killed zombie %d\n", w);
             }
             continue;
         }
+
+        // handle the connection in child code
         else if(pid == 0)
         {
             char buffer[BUF_SIZE];
@@ -113,11 +130,15 @@ int main(int argc, char *argv[])
             bzero(buffer,BUF_SIZE);
 
             n = read(newsockfd,buffer,BUF_SIZE);
-            if(strncmp(buffer,"get",3) == 0){        // the command passed was of form "get filename"
-                filename = buffer + 4;              // point filename to the correct pointer
+
+            // the command passed was of form "get filename"
+            if(strncmp(buffer,"get",3) == 0){        
+                // point filename to the correct pointer
+                filename = buffer + 4;              
                 printf("File requested: %s\n",filename);
             }
 
+            // send the file to the client
             if(filename != NULL){
 
                 FILE *filehandle = fopen(filename, "rb");
@@ -126,16 +147,11 @@ int main(int argc, char *argv[])
                   fclose(filehandle);
                 }
             }
+            //close the connect
             close(newsockfd);
             return 0;
         }
     }
-
-
-     /* send reply to client */
-
-     // n = write(newsockfd,"I got your message",18);
-     // if (n < 0) error("ERROR writing to socket");
      return 0; 
 }
 
@@ -144,7 +160,7 @@ int main(int argc, char *argv[])
 int senddata(int sock, void *buf, int buflen)
 {
     unsigned char *pbuf = (unsigned char *) buf;
-
+    // keep on sending until buflen bytes are not send
     while (buflen > 0)
     {
         int num = send(sock, pbuf, buflen, 0);
@@ -163,6 +179,7 @@ int sendlong(int sock, long value)
 
 int sendfile(int sock, FILE *f)
 {
+    // calculate file size
     fseek(f, 0, SEEK_END);
     long filesize = ftell(f);
     rewind(f);
@@ -170,6 +187,7 @@ int sendfile(int sock, FILE *f)
         return 0;
     if (sendlong(sock, filesize) == 0)
         return 0;
+    // send file using a buffer length of 1024 bytes
     if (filesize > 0)
     {
         char buffer[1024];
